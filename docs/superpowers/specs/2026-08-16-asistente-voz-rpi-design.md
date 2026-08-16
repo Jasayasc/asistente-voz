@@ -294,10 +294,15 @@ nube, un corte de internet dejaría al asistente mudo.
 
 | Decisión | Estado | Impacto |
 |---|---|---|
-| Proveedor del LLM | Sin decidir | Aislado tras `llm/cliente`. Una clase nueva y un cambio de configuración |
-| Proveedor del STT | Sin decidir | Aislado tras `stt/cliente`. Igual que el anterior |
-| Palabra de activación | Sin decidir | Reentrenar el modelo del wake word, minutos de trabajo |
-| API de clima concreta | Sin decidir | Aislada tras `llm/herramientas` |
+| Proveedor del LLM | **Gemini** (`gemini-2.5-flash`) | Aislado tras `llm/base`. Cambiarlo es una subclase nueva y una línea de configuración |
+| Proveedor del STT | **Deepgram** | Aislado tras `stt/base`. Igual que el anterior |
+| API de clima | **Open-Meteo** | Sin API key ni registro. Aislada tras `llm/herramientas` |
+| Palabra de activación | **`hey_jarvis`** (modelo pre-entrenado) para el Hito 1 | El nombre personalizado requiere entrenar un modelo con openWakeWord; es trabajo independiente que no bloquea nada |
+
+Nota sobre el plan gratuito de Gemini: tiene límites de peticiones por minuto, y
+Google puede usar los datos enviados para mejorar sus productos. Es aceptable para
+un proyecto personal, pero conviene tenerlo presente en un aparato que escucha en
+una vivienda.
 
 **Criterios para elegir la palabra de activación:** mínimo 3-4 sílabas, fonéticamente
 distintiva en español, y que no sea una palabra de uso corriente en conversación. Los
