@@ -29,4 +29,9 @@ def decodificar(linea: bytes) -> Mensaje:
     except ValueError as exc:
         raise ValueError(f"estado desconocido: {payload['estado']!r}") from exc
 
-    return Mensaje(estado=estado, rms=float(payload.get("rms", 0.0)))
+    try:
+        rms = float(payload.get("rms", 0.0))
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"rms inválido: {payload.get('rms')!r}") from exc
+
+    return Mensaje(estado=estado, rms=rms)

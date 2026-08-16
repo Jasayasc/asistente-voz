@@ -32,3 +32,18 @@ def test_decodificar_rechaza_estado_desconocido():
 def test_decodificar_rechaza_mensaje_sin_estado():
     with pytest.raises(ValueError):
         decodificar(b'{"rms": 0.5}\n')
+
+
+def test_decodificar_rechaza_rms_nulo():
+    with pytest.raises(ValueError):
+        decodificar(b'{"estado": "reposo", "rms": null}\n')
+
+
+def test_decodificar_rechaza_rms_no_numerico():
+    with pytest.raises(ValueError):
+        decodificar(b'{"estado": "reposo", "rms": "no_es_numero"}\n')
+
+
+def test_decodificar_rechaza_rms_lista():
+    with pytest.raises(ValueError):
+        decodificar(b'{"estado": "reposo", "rms": [1, 2, 3]}\n')
