@@ -20,6 +20,7 @@ class Config:
     deepgram_api_key: str
     gemini_api_key: str
     modelo_llm: str
+    ruta_voz: str
     dispositivo_entrada: str | None
     dispositivo_salida: str | None
     pantalla_completa: bool
@@ -35,6 +36,7 @@ class Config:
             deepgram_api_key=os.getenv("DEEPGRAM_API_KEY", ""),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             modelo_llm=os.getenv("MODELO_LLM", "gemini-2.5-flash"),
+            ruta_voz=os.getenv("RUTA_VOZ", "modelos/es_ES-davefx-medium.onnx"),
             dispositivo_entrada=_texto_o_none(os.getenv("DISPOSITIVO_ENTRADA")),
             dispositivo_salida=_texto_o_none(os.getenv("DISPOSITIVO_SALIDA")),
             pantalla_completa=os.getenv("PANTALLA_COMPLETA", "false").lower() == "true",

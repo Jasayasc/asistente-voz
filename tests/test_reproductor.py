@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
 
-from asistente.audio.reproductor import calcular_rms
+from asistente.audio import reproductor as reproductor_mod
+from asistente.audio.captura import TASA_MUESTREO
+from asistente.audio.reproductor import Reproductor, calcular_rms
 
 
 def test_silencio_da_cero():
@@ -39,3 +41,46 @@ def test_amplitud_media_escala_da_valor_exacto():
     """
     bloque = np.full(1000, 16384, dtype=np.int16)
     assert calcular_rms(bloque) == pytest.approx(0.5, abs=0.001)
+
+
+class _StreamFalso:
+    """Doble de `sd.OutputStream` que no toca hardware. Registra los
+    parámetros de construcción para poder comprobar qué tasa llegó."""
+
+    instancias: list["_StreamFalso"] = []
+
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+        _StreamFalso.instancias.append(self)
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def write(self, trozo) -> None:
+        pass
+
+
+def test_tasa_predeterminada_es_la_de_captura(monkeypatch):
+    """Sin pasar `tasa`, el reproductor sigue usando `TASA_MUESTREO` (16000)
+    — así ningún llamador existente (Task 12) cambia de comportamiento."""
+    _StreamFalso.instancias.clear()
+    monkeypatch.setattr(reproductor_mod.sd, "OutputStream", _StreamFalso)
+    rep = Reproductor()
+    rep.reproducir([], al_rms=lambda r: None)
+    assert _StreamFalso.instancias[0].kwargs["samplerate"] == TASA_MUESTREO
+
+
+def test_la_tasa_pasada_al_constructor_llega_al_stream(monkeypatch):
+    """La tasa del modelo de voz (p.ej. 22050 de Piper) debe llegar tal
+    cual al stream de salida, o la voz suena lenta y grave."""
+    _StreamFalso.instancias.clear()
+    monkeypatch.setattr(reproductor_mod.sd, "OutputStream", _StreamFalso)
+    rep = Reproductor(tasa=22050)
+    rep.reproducir([], al_rms=lambda r: None)
+    assert _StreamFalso.instancias[0].kwargs["samplerate"] == 22050

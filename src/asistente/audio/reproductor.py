@@ -29,8 +29,9 @@ class Reproductor:
     respuesta completa.
     """
 
-    def __init__(self, dispositivo: str | None = None) -> None:
+    def __init__(self, dispositivo: str | None = None, tasa: int = TASA_MUESTREO) -> None:
         self._dispositivo = dispositivo
+        self._tasa = tasa
         self._cancelado = False
 
     def detener(self) -> None:
@@ -41,7 +42,7 @@ class Reproductor:
     ) -> None:
         self._cancelado = False
         stream = sd.OutputStream(
-            samplerate=TASA_MUESTREO,
+            samplerate=self._tasa,
             channels=1,
             dtype="int16",
             device=self._dispositivo,
