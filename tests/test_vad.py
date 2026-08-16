@@ -133,9 +133,11 @@ def test_umbral_justo_por_debajo():
     assert vad.hubo_voz is False
 
 
-def test_umbral_exacto():
-    """Energía exactamente en el umbral cuenta como voz (comparación >=)."""
-    # Amplitud 656 da RMS ≈ 0.02002 (justo encima)
+def test_umbral_ligeramente_por_encima():
+    """Energía justo por encima del umbral cuenta como voz.
+
+    Amplitud 656 da RMS ≈ 0.02002 (justo encima del 0.02 predeterminado).
+    """
     vad = DetectorSilencio(umbral=0.02)
     bloque_alto = bloque_amplitud(656)
     vad.procesar(bloque_alto)
@@ -143,11 +145,33 @@ def test_umbral_exacto():
     assert vad.hubo_voz is True
 
 
-def test_umbral_justo_por_encima():
-    """Energía justo por encima del umbral cuenta como voz."""
+def test_umbral_claramente_por_encima():
+    """Energía claramente encima del umbral cuenta como voz."""
     # Amplitud 657 da RMS ≈ 0.02005 (más claramente encima)
     vad = DetectorSilencio(umbral=0.02)
     bloque_alto = bloque_amplitud(657)
     vad.procesar(bloque_alto)
     # Debe haber detectado voz
+    assert vad.hubo_voz is True
+
+
+def test_comparacion_inclusiva_en_frontera_exacta():
+    """Detecta cambios de >= a > en la comparación de energía.
+
+    Construye umbral calculado exactamente a partir de una amplitud entera,
+    así energía y umbral son idénticos bit a bit. Con comparación inclusiva (>=)
+    la energía iguala al umbral y cuenta como voz. Si alguien cambiara a
+    comparación estricta (>), fallaría esta prueba. Este test existe para
+    detectar esa regresión.
+    """
+    # Amplitud 512 es conveniente: da RMS exacta de 512/32768
+    amplitud = 512
+    umbral_exacto = amplitud / 32768.0
+
+    vad = DetectorSilencio(umbral=umbral_exacto)
+    bloque_frontera = bloque_amplitud(amplitud)
+
+    # La energía será exactamente igual al umbral
+    # Con >= cuenta como voz; con > no contaría
+    vad.procesar(bloque_frontera)
     assert vad.hubo_voz is True
