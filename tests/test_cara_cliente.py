@@ -109,7 +109,9 @@ def test_no_lanza_si_no_hay_nadie_escuchando():
 
 
 def test_se_reconecta_cuando_la_cara_vuelve():
-    cliente = CaraCliente("127.0.0.1", _puerto_cerrado())
+    # Backoff pequeño: lo que se prueba es que reconecta, no cuánto tarda
+    # el intervalo de reintento en producción (ESPERA_RECONEXION).
+    cliente = CaraCliente("127.0.0.1", _puerto_cerrado(), espera_reconexion=0.05)
     cliente.set_estado(Estado.PENSANDO)  # falla en silencio
 
     servidor = ServidorFalso()

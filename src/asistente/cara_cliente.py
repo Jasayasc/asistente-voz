@@ -15,9 +15,12 @@ class CaraCliente:
     de conexión se traga y se reintenta más tarde.
     """
 
-    def __init__(self, host: str, puerto: int) -> None:
+    def __init__(
+        self, host: str, puerto: int, espera_reconexion: float = ESPERA_RECONEXION
+    ) -> None:
         self._host = host
         self._puerto = puerto
+        self._espera_reconexion = espera_reconexion
         self._sock: socket.socket | None = None
         self._proximo_intento = 0.0
 
@@ -44,7 +47,7 @@ class CaraCliente:
             return True
         except OSError:
             self._sock = None
-            self._proximo_intento = time.monotonic() + ESPERA_RECONEXION
+            self._proximo_intento = time.monotonic() + self._espera_reconexion
             return False
 
     def _descartar(self) -> None:
@@ -54,4 +57,4 @@ class CaraCliente:
             except OSError:
                 pass
             self._sock = None
-        self._proximo_intento = time.monotonic() + ESPERA_RECONEXION
+        self._proximo_intento = time.monotonic() + self._espera_reconexion
