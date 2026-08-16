@@ -27,9 +27,9 @@ class DetectorSilencio:
     ) -> None:
         self._umbral = umbral
         self._bloques_silencio_necesarios = max(
-            1, int(segundos_silencio / SEGUNDOS_POR_BLOQUE)
+            1, int(segundos_silencio / SEGUNDOS_POR_BLOQUE + 0.5)
         )
-        self._bloques_maximos = max(1, int(maximo_segundos / SEGUNDOS_POR_BLOQUE))
+        self._bloques_maximos = max(1, int(maximo_segundos / SEGUNDOS_POR_BLOQUE + 0.5))
         self.reiniciar()
 
     def reiniciar(self) -> None:
