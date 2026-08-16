@@ -27,17 +27,35 @@ class Captura:
         self._stream: sd.InputStream | None = None
 
     def _callback(self, datos, frames, tiempo, estado) -> None:
+        bloque = datos[:, 0].copy()
         try:
-            self._cola.put_nowait(datos[:, 0].copy())
+            self._cola.put_nowait(bloque)
+            return
         except queue.Full:
-            try:
-                self._cola.get_nowait()
-                self._cola.put_nowait(datos[:, 0].copy())
-            except (queue.Empty, queue.Full):
-                pass
+            pass
+
+        # La cola está llena: descartamos el más viejo para hacer sitio al
+        # que acaba de llegar. Si otro hilo ya la vació por su cuenta,
+        # get_nowait lanza Empty — lo ignoramos, porque igual seguimos
+        # queriendo intentar el put_nowait de abajo, no rendirnos.
+        try:
+            self._cola.get_nowait()
+        except queue.Empty:
+            pass
+
+        try:
+            self._cola.put_nowait(bloque)
+        except queue.Full:
+            # Otro productor ganó la carrera y volvió a llenar la cola
+            # entre nuestro get_nowait y este put_nowait. No hay más que
+            # intentar sin arriesgarnos a bloquear: se pierde este bloque.
+            pass
 
     def iniciar(self) -> None:
-        self._stream = sd.InputStream(
+        if self._stream is not None:
+            self.detener()
+
+        stream = sd.InputStream(
             samplerate=TASA_MUESTREO,
             blocksize=TAMANO_BLOQUE,
             device=self._dispositivo,
@@ -45,7 +63,17 @@ class Captura:
             dtype=TIPO,
             callback=self._callback,
         )
-        self._stream.start()
+        try:
+            stream.start()
+        except Exception:
+            # Si el dispositivo rechaza el arranque (ocupado, sin permiso,
+            # frecuencia no soportada) el stream ya está abierto en
+            # PortAudio. Hay que cerrarlo aquí porque, si esto se llamó
+            # desde __enter__, Python no invocará __exit__ y nadie más
+            # tendrá ocasión de limpiarlo.
+            stream.close()
+            raise
+        self._stream = stream
 
     def leer_bloque(self, timeout: float = 1.0) -> np.ndarray | None:
         try:
