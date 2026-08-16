@@ -46,19 +46,24 @@ class Reproductor:
             dtype="int16",
             device=self._dispositivo,
         )
-        stream.start()
         try:
-            for chunk in chunks:
-                if self._cancelado:
-                    break
-                muestras = np.frombuffer(chunk, dtype=np.int16)
-                for inicio in range(0, len(muestras), MUESTRAS_POR_TROZO):
+            stream.start()
+            try:
+                for chunk in chunks:
                     if self._cancelado:
                         break
-                    trozo = muestras[inicio : inicio + MUESTRAS_POR_TROZO]
-                    al_rms(calcular_rms(trozo))
-                    stream.write(trozo)
+                    muestras = np.frombuffer(chunk, dtype=np.int16)
+                    for inicio in range(0, len(muestras), MUESTRAS_POR_TROZO):
+                        if self._cancelado:
+                            break
+                        trozo = muestras[inicio : inicio + MUESTRAS_POR_TROZO]
+                        al_rms(calcular_rms(trozo))
+                        stream.write(trozo)
+            finally:
+                stream.stop()
+                try:
+                    al_rms(0.0)
+                except Exception:
+                    pass
         finally:
-            al_rms(0.0)
-            stream.stop()
             stream.close()
