@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\correlaciona.py\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\verifica_umbral.py\")",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\verifica_vivo.py\")",
+      "Bash(d:/Proyectos/asistente-voz/.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\transcribe_verifica.py\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\espectro.py\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\barrido.py\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\prueba_exclusivo.py\")",
+      "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_wakeword.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_sin_efectos.py)",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\zumbido.py\")",
+      "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_palabras.py)",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\control.py\")",
+      "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_microfonos.py)"
+    ]
+  }
+}
