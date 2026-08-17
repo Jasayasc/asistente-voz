@@ -1,6 +1,7 @@
 import logging
 import socket
 import threading
+import time
 
 from comun.estados import Estado
 from comun.protocolo import Mensaje, decodificar
@@ -78,6 +79,12 @@ class ServidorCara:
                     "accept() falló con un error recuperable; se sigue escuchando",
                     exc_info=True,
                 )
+                # Sin esta pausa, un EMFILE/ENFILE sostenido (fuga de
+                # descriptores) da un bucle cerrado de accept() + traza
+                # completa en cada vuelta: quema un núcleo de la Pi y llena
+                # el log, justo en el proceso que "nunca debe morir" y debe
+                # seguir siendo barato.
+                time.sleep(0.1)
                 continue
             try:
                 with conexion:

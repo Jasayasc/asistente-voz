@@ -1,7 +1,5 @@
 from dataclasses import dataclass, fields, replace
 
-CAMPOS = ("ojo_izq", "ojo_der", "pupila_x", "pupila_y", "boca", "sonrisa")
-
 
 @dataclass
 class Parametros:
@@ -29,6 +27,16 @@ def interpolar(actual: Parametros, objetivo: Parametros, factor: float) -> Param
 
     Aplicado cada frame produce transiciones suaves sin escribir animaciones
     a mano: con factor 0.15 a 60 fps, una transición completa dura ~200 ms.
+
+    RIESGO CONOCIDO (diferido al Hito 2, ver revisión final del Hito 1):
+    `factor` es por frame, no por segundo — no recibe `dt`. A 60 fps (el
+    caso de desarrollo en Windows) eso da los ~200 ms de arriba; a 20 fps
+    (lo esperable en una Raspberry Pi 3B) la misma transición dura ~600 ms,
+    porque hay menos frames en los que acercarse al objetivo. Antes de
+    portar a la Pi, escalar por `dt` (p. ej. `factor = 1 - exp(-k * dt)`, o
+    como mínimo `min(1.0, factor_base * dt * 60)` para evitar que un frame
+    largo aislado produzca un factor > 1 y la interpolación sobrepase el
+    objetivo y oscile) y volver a medir con el framerate real de la Pi.
     """
     valores = {}
     for campo in fields(actual):

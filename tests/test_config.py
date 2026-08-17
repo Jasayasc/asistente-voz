@@ -1,5 +1,4 @@
 # tests/test_config.py
-import os
 from asistente.config import Config
 
 
