@@ -16,6 +16,7 @@ from google.genai import types
 from asistente.llm.base import ErrorDeRed
 from asistente.llm.gemini import (
     MAX_VUELTAS_HERRAMIENTAS,
+    TIMEOUT_MS,
     TURNOS_DE_HISTORIAL,
     ClienteGemini,
     _construir_herramientas,
@@ -89,6 +90,27 @@ def test_no_lanza_error_de_red_sin_fallo_de_verdad():
     """Control negativo: si no hay excepción, conversar no debe fallar."""
     cliente, _ = _cliente_con_stream_falso([[_fragmento(_parte(texto="Hola."))]])
     assert list(cliente.conversar("hola")) == ["Hola."]
+
+
+def test_error_de_timeout_se_traduce_a_error_de_red():
+    """Una conexión medio abierta (el router vive, internet no) da
+    httpx.TimeoutException al agotarse el timeout: debe traducirse igual
+    que cualquier otro fallo de red, no colgar el generador para siempre."""
+    cliente, _ = _cliente_con_stream_falso(
+        [httpx.TimeoutException("tiempo de espera agotado")]
+    )
+    with pytest.raises(ErrorDeRed):
+        list(cliente.conversar("¿qué tiempo hace?"))
+
+
+def test_cliente_gemini_configura_un_timeout_explicito():
+    """Sin `http_options`, el SDK deja timeout=None y httpx espera para
+    siempre: es justo el escenario del test anterior, y sin esta
+    configuración nunca llegaría a lanzarse `httpx.TimeoutException`. Se
+    comprueba directamente sobre el cliente HTTP interno del SDK, en
+    milisegundos (la unidad que espera `HttpOptions.timeout`, no segundos)."""
+    cliente, _ = _cliente_con_stream_falso([[_fragmento(_parte(texto="Hola."))]])
+    assert cliente._cliente._api_client._http_options.timeout == TIMEOUT_MS
 
 
 # --- Frases completas, no fragmentos sueltos ------------------------------

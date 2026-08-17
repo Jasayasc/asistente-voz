@@ -24,6 +24,14 @@ MAX_TOKENS = 400
 MAX_VUELTAS_HERRAMIENTAS = 3
 TURNOS_DE_HISTORIAL = 6  # 3 intercambios; suficiente para dar contexto
 
+# HttpOptions.timeout está en MILISEGUNDOS (a diferencia de httpx, que usa
+# segundos): así lo espera el SDK internamente antes de pasarlo a httpx.
+# Sin esto, genai.Client deja timeout=None y httpx espera para siempre ante
+# una conexión medio abierta (router vivo, internet muerto): el asistente
+# se queda colgado en PENSANDO sin posibilidad de recuperación, porque
+# nunca se lanza nada que la red de seguridad del orquestador pueda atrapar.
+TIMEOUT_MS = 15_000
+
 # Traduce el campo "tipo" del esquema neutro de herramientas.py al enum de
 # tipos de Gemini. Un tipo no soportado debe fallar alto y claro al
 # construir las herramientas, no elegir un tipo por defecto en silencio:
@@ -81,7 +89,10 @@ class ClienteGemini(ClienteLLM):
     """
 
     def __init__(self, api_key: str, modelo: str) -> None:
-        self._cliente = genai.Client(api_key=api_key)
+        self._cliente = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=TIMEOUT_MS),
+        )
         self._modelo = modelo
         self._config = types.GenerateContentConfig(
             system_instruction=INSTRUCCIONES,
