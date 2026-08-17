@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pytest
 
+import asistente.orquestador as orquestador_mod
 from asistente.audio.captura import TAMANO_BLOQUE
 from asistente.llm.base import ErrorDeRed
 from asistente.orquestador import MENSAJE_NO_ENTENDIDO, MENSAJE_SIN_RED, Orquestador
@@ -13,6 +14,7 @@ from comun.estados import Estado
 class CapturaFalsa:
     def __init__(self, bloques):
         self._bloques = list(bloques)
+        self.vaciados = 0
 
     def leer_bloque(self, timeout=1.0):
         if not self._bloques:
@@ -20,7 +22,7 @@ class CapturaFalsa:
         return self._bloques.pop(0)
 
     def vaciar(self):
-        pass
+        self.vaciados += 1
 
 
 class DetectorFalso:
@@ -204,11 +206,12 @@ def test_el_llm_sin_frases_avisa_y_no_falla():
     assert piezas["cara"].estados[-1] is Estado.REPOSO
 
 
-def test_una_excepcion_inesperada_no_mata_el_bucle(caplog):
+def test_una_excepcion_inesperada_no_mata_el_bucle(monkeypatch, caplog):
     """Tasks 15 y 16 traducen sus errores a ErrorDeRed, pero envuelven SDKs
     de terceros que este proyecto no controla. Un bug ahí no debe tumbar el
     proceso completo: se registra con logging (nunca se imprime) y el bucle
     sigue en el siguiente ciclo."""
+    monkeypatch.setattr(orquestador_mod.time, "sleep", lambda segundos: None)
     _, piezas = construir()
 
     class OrquestadorFragil(Orquestador):
@@ -219,6 +222,11 @@ def test_una_excepcion_inesperada_no_mata_el_bucle(caplog):
         def un_ciclo(self):
             self.llamadas += 1
             if self.llamadas == 1:
+                # Un estado intermedio antes de fallar: si no, la aserción
+                # de más abajo sería trivial, porque ejecutar() ya pone
+                # REPOSO como primerísima acción y CaraFalsa colapsa
+                # estados consecutivos iguales.
+                self._cara.set_estado(Estado.ESCUCHANDO)
                 raise ValueError("bug simulado")
             # Sale del bucle infinito de ejecutar() sin que se confunda con
             # la excepción inesperada que se está probando.
@@ -233,3 +241,114 @@ def test_una_excepcion_inesperada_no_mata_el_bucle(caplog):
     assert orq.llamadas == 2
     assert "bug simulado" in caplog.text
     assert piezas["cara"].estados[-1] is Estado.REPOSO
+
+
+def test_un_fallo_inesperado_vacia_la_cola_de_audio(monkeypatch):
+    """Si un ciclo muere a mitad de hablar, la cola de captura conserva
+    bloques con la propia voz sintetizada del asistente. Sin vaciarla, el
+    siguiente ciclo se la entrega bloque a bloque al detector de palabra
+    clave: el asistente podría despertarse con su propia voz."""
+    monkeypatch.setattr(orquestador_mod.time, "sleep", lambda segundos: None)
+    _, piezas = construir()
+
+    class OrquestadorFragil(Orquestador):
+        def __init__(self, **piezas):
+            super().__init__(**piezas)
+            self.llamadas = 0
+
+        def un_ciclo(self):
+            self.llamadas += 1
+            if self.llamadas == 1:
+                raise ValueError("bug simulado")
+            raise SystemExit
+
+    orq = OrquestadorFragil(**piezas)
+    with pytest.raises(SystemExit):
+        orq.ejecutar()
+
+    assert piezas["captura"].vaciados >= 1
+
+
+def test_fallos_consecutivos_esperan_con_backoff_creciente(monkeypatch):
+    """Sin este freno, un colaborador que falle en cada bloque entregado
+    (Detector.procesar contra un ONNX roto, por ejemplo) reintentaría a la
+    velocidad de llegada de audio, ~30 Hz, en vez de a la de un fallo real."""
+    esperas = []
+    monkeypatch.setattr(orquestador_mod.time, "sleep", esperas.append)
+    _, piezas = construir()
+
+    class OrquestadorFragil(Orquestador):
+        def __init__(self, **piezas):
+            super().__init__(**piezas)
+            self.llamadas = 0
+
+        def un_ciclo(self):
+            self.llamadas += 1
+            if self.llamadas <= 3:
+                raise ValueError(f"bug distinto {self.llamadas}")
+            raise SystemExit
+
+    orq = OrquestadorFragil(**piezas)
+    with pytest.raises(SystemExit):
+        orq.ejecutar()
+
+    base = orquestador_mod.ESPERA_BASE_TRAS_FALLO
+    assert esperas == [base, base * 2, base * 4]
+
+
+def test_el_backoff_se_reinicia_tras_un_ciclo_correcto(monkeypatch):
+    """El contador de fallos consecutivos no debe arrastrarse entre
+    incidentes separados por un ciclo que funcionó bien."""
+    esperas = []
+    monkeypatch.setattr(orquestador_mod.time, "sleep", esperas.append)
+    _, piezas = construir()
+
+    class OrquestadorFragil(Orquestador):
+        def __init__(self, **piezas):
+            super().__init__(**piezas)
+            self.llamadas = 0
+
+        def un_ciclo(self):
+            self.llamadas += 1
+            if self.llamadas == 1:
+                raise ValueError("bug")
+            if self.llamadas == 2:
+                return  # ciclo correcto: no lanza nada
+            if self.llamadas == 3:
+                raise ValueError("bug de nuevo")
+            raise SystemExit
+
+    orq = OrquestadorFragil(**piezas)
+    with pytest.raises(SystemExit):
+        orq.ejecutar()
+
+    base = orquestador_mod.ESPERA_BASE_TRAS_FALLO
+    assert esperas == [base, base]
+
+
+def test_fallo_repetido_no_repite_traza_completa(monkeypatch, caplog):
+    """Un mismo error disparado en cada ciclo no debe escribir su traza
+    completa una y otra vez: en una Pi desatendida que registra a fichero,
+    eso llena la tarjeta SD. Se registra una vez y luego se cuenta."""
+    monkeypatch.setattr(orquestador_mod.time, "sleep", lambda segundos: None)
+    _, piezas = construir()
+
+    class OrquestadorFragil(Orquestador):
+        def __init__(self, **piezas):
+            super().__init__(**piezas)
+            self.llamadas = 0
+
+        def un_ciclo(self):
+            self.llamadas += 1
+            if self.llamadas <= 3:
+                raise ValueError("siempre el mismo bug")
+            raise SystemExit
+
+    orq = OrquestadorFragil(**piezas)
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(SystemExit):
+            orq.ejecutar()
+
+    con_traza = [r for r in caplog.records if r.exc_info]
+    assert len(con_traza) == 1
+    assert caplog.text.count("veces suprimido") == 2
