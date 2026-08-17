@@ -31,15 +31,22 @@ DESCRIPCIONES = {
     51: "con llovizna ligera",
     53: "con llovizna",
     55: "con llovizna intensa",
+    56: "con llovizna helada ligera",
+    57: "con llovizna helada",
     61: "con lluvia ligera",
     63: "con lluvia",
     65: "con lluvia fuerte",
+    66: "con lluvia helada ligera",
+    67: "con lluvia helada",
     71: "con nieve ligera",
     73: "con nieve",
     75: "con nieve intensa",
+    77: "con granos de nieve",
     80: "con chubascos",
     81: "con chubascos fuertes",
     82: "con chubascos muy fuertes",
+    85: "con chubascos de nieve",
+    86: "con chubascos de nieve fuertes",
     95: "con tormenta",
     96: "con tormenta y granizo",
     99: "con tormenta fuerte y granizo",
@@ -71,20 +78,19 @@ def consultar_clima(
         )
         respuesta.raise_for_status()
         actual = respuesta.json()["current"]
-    except (httpx.HTTPError, KeyError, ValueError):
+        cielo = DESCRIPCIONES.get(int(actual.get("weather_code", -1)), "estado desconocido")
+        return (
+            f"Temperatura {actual['temperature_2m']} grados, "
+            f"sensación térmica {actual['apparent_temperature']} grados, "
+            f"humedad {actual['relative_humidity_2m']} por ciento, "
+            f"viento {actual['wind_speed_10m']} kilómetros por hora, "
+            f"cielo {cielo}."
+        )
+    except (httpx.HTTPError, KeyError, ValueError, TypeError, AttributeError):
         return "No se ha podido consultar el clima ahora mismo."
     finally:
         if propio:
             cliente.close()
-
-    cielo = DESCRIPCIONES.get(int(actual.get("weather_code", -1)), "sin datos del cielo")
-    return (
-        f"Temperatura {actual['temperature_2m']} grados, "
-        f"sensación térmica {actual['apparent_temperature']} grados, "
-        f"humedad {actual['relative_humidity_2m']} por ciento, "
-        f"viento {actual['wind_speed_10m']} kilómetros por hora, "
-        f"cielo {cielo}."
-    )
 
 
 HERRAMIENTAS = [ESQUEMA_CLIMA]
@@ -102,5 +108,5 @@ def ejecutar(
             float(argumentos["longitud"]),
             cliente_http=cliente_http,
         )
-    except (KeyError, TypeError, ValueError):
-        return "Faltan las coordenadas o no son válidas."
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return "No se ha podido procesar la solicitud de clima."
