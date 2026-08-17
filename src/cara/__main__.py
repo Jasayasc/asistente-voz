@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pygame
 
@@ -13,6 +12,24 @@ from comun.estados import Estado
 
 FPS = 60
 SUAVIZADO = 0.15
+
+
+def _componer_frame(
+    actual: Parametros, objetivo: Parametros, factor: float
+) -> Parametros:
+    """Un frame de la animación: suaviza todo salvo la boca.
+
+    `objetivo.boca` ya viene de `Lipsync.procesar`/`reposar`, que aplica su
+    propio ataque rápido / liberación lenta (ver `cara/lipsync.py`). Pasarla
+    otra vez por `interpolar` encadena un segundo filtro de primer orden
+    sobre el primero: el ataque de 0.5 queda gobernado por el 0.15 genérico,
+    y una sílaba corta abre la boca a una fracción de la amplitud que debía.
+    Por eso la boca se asigna después de interpolar, sin pasar por el
+    factor genérico, mientras el resto de parámetros sí lo hace.
+    """
+    resultado = interpolar(actual, objetivo, factor)
+    resultado.boca = objetivo.boca
+    return resultado
 
 
 def main() -> int:
@@ -51,7 +68,7 @@ def main() -> int:
         else:
             objetivo.boca = lipsync.reposar()
 
-        actual = interpolar(actual, objetivo, SUAVIZADO)
+        actual = _componer_frame(actual, objetivo, SUAVIZADO)
         renderizador.dibujar(pantalla, actual)
         pygame.display.flip()
 
