@@ -21,11 +21,59 @@ def bloque_amplitud(amplitud):
     return np.full(TAMANO_BLOQUE, amplitud, dtype=np.int16)
 
 
-def test_el_silencio_inicial_no_termina_la_intervencion():
-    """Si el usuario aún no ha empezado a hablar, no hay nada que cerrar."""
-    vad = DetectorSilencio(segundos_silencio=0.5)
-    for _ in range(50):
+def test_el_silencio_inicial_no_termina_antes_de_su_propio_tope():
+    """Si el usuario aún no ha empezado a hablar, no cierra antes de
+    `segundos_sin_voz` (el tope corto del falso positivo; ver el test de
+    abajo para el caso en que sí se alcanza)."""
+    vad = DetectorSilencio(segundos_silencio=0.5, segundos_sin_voz=5.0)
+    for _ in range(50):  # 4.0 s: menos que los 5.0 s de segundos_sin_voz
         assert vad.procesar(bloque_silencio()) is False
+
+
+def test_falso_positivo_corta_pronto_por_su_propio_tope_sin_voz():
+    """Un falso positivo del wake word (nadie habla) debe volver a reposo
+    tras `segundos_sin_voz`, mucho antes que `maximo_segundos`: si no, el
+    detector de palabra clave queda sin ejecutarse —el asistente sordo a su
+    propio nombre— durante toda la ventana larga."""
+    vad = DetectorSilencio(segundos_sin_voz=0.5, maximo_segundos=12.0)
+    terminado = False
+    bloques_usados = 0
+    for _ in range(50):
+        bloques_usados += 1
+        if vad.procesar(bloque_silencio()):
+            terminado = True
+            break
+    assert terminado
+    assert vad.hubo_voz is False
+    # 0.5 s / 0.08 s por bloque ≈ 6 bloques; muy por debajo de los ~150
+    # bloques que tomarían los 12 s de maximo_segundos.
+    assert bloques_usados <= 8
+
+
+def test_falso_positivo_usa_el_valor_por_defecto_de_unos_tres_segundos():
+    """El tope corto por defecto ronda los ~3 s que pide el diseño, no los
+    12 s de `maximo_segundos`."""
+    vad = DetectorSilencio()
+    terminado = False
+    bloques_usados = 0
+    for _ in range(60):
+        bloques_usados += 1
+        if vad.procesar(bloque_silencio()):
+            terminado = True
+            break
+    assert terminado
+    assert vad.hubo_voz is False
+    assert bloques_usados <= 40  # ~3.0 s; el tope de 12 s son ~150 bloques
+
+
+def test_intervencion_larga_con_voz_sigue_usando_el_tope_largo():
+    """Una intervención genuina y larga (hay voz real) no debe cortarse por
+    el tope corto de "nadie ha dicho nada todavía": sigue rigiéndose por
+    `maximo_segundos`, no por `segundos_sin_voz`."""
+    vad = DetectorSilencio(segundos_sin_voz=0.5, maximo_segundos=2.0)
+    for _ in range(24):  # 1.92 s: más que segundos_sin_voz, menos que maximo_segundos
+        assert vad.procesar(bloque_voz()) is False
+    assert vad.procesar(bloque_voz()) is True  # bloque 25: alcanza los 2.0 s
 
 
 def test_termina_tras_hablar_y_callar():
