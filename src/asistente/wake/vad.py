@@ -25,8 +25,17 @@ class DetectorSilencio:
         segundos_silencio: float = 1.0,
         segundos_sin_voz: float = 3.0,
         maximo_segundos: float = 12.0,
+        bloques_para_voz: int = 2,
     ) -> None:
         self._umbral = umbral
+        # Cuántos bloques seguidos por encima del umbral hacen falta para
+        # dar la voz por empezada. Con uno solo bastaba un chasquido —o,
+        # peor, la cola de la propia voz del asistente colándose desde el
+        # altavoz— para abrir una intervención: `hubo_voz` se ponía a True,
+        # el resto eran silencio, y se mandaba a transcribir un segundo de
+        # ruido propio. Dos bloques son 160 ms: menos que cualquier sílaba
+        # real, más que cualquier golpe seco.
+        self._bloques_para_voz = max(1, bloques_para_voz)
         self._bloques_silencio_necesarios = max(
             1, int(segundos_silencio / SEGUNDOS_POR_BLOQUE + 0.5)
         )
@@ -43,27 +52,58 @@ class DetectorSilencio:
         self._bloques_maximos = max(1, int(maximo_segundos / SEGUNDOS_POR_BLOQUE + 0.5))
         self.reiniciar()
 
-    def reiniciar(self) -> None:
+    def _en_bloques(self, segundos: float) -> int:
+        return max(1, int(segundos / SEGUNDOS_POR_BLOQUE + 0.5))
+
+    def reiniciar(self, segundos_sin_voz: float | None = None) -> None:
+        """Prepara la escucha de una intervención.
+
+        `segundos_sin_voz` permite alargar, solo para esta intervención, la
+        paciencia con el silencio inicial. Existe por el modo conversación:
+        tras la palabra clave, tres segundos sin oír nada significan que el
+        wake word se disparó solo y hay que volver a reposo cuanto antes;
+        pero en mitad de una conversación ese mismo silencio es la persona
+        pensando qué preguntar a continuación, y cortarle a los tres
+        segundos obliga a decir "hey jarvis" otra vez, que es justo lo que
+        el modo conversación viene a quitar.
+        """
         self._silencios = 0
-        self._bloques = 0
+        self._bloques_de_voz = 0
+        self._con_energia = 0
         self.hubo_voz = False
+        self._bloques_sin_voz_actual = (
+            self._bloques_sin_voz
+            if segundos_sin_voz is None
+            else self._en_bloques(segundos_sin_voz)
+        )
 
     def procesar(self, bloque: np.ndarray) -> bool:
-        self._bloques += 1
         if self._energia(bloque) >= self._umbral:
-            self.hubo_voz = True
+            self._con_energia += 1
             self._silencios = 0
+            if self._con_energia >= self._bloques_para_voz:
+                self.hubo_voz = True
         else:
+            self._con_energia = 0
             self._silencios += 1
 
-        if self._bloques >= self._bloques_maximos:
-            return True
         if not self.hubo_voz:
             # Todavía no ha empezado a hablar: si el silencio se alarga,
             # es un falso positivo del wake word, no una pausa dentro de
-            # una intervención real. Corta con su propio tope, más corto
-            # que `maximo_segundos`.
-            return self._silencios >= self._bloques_sin_voz
+            # una intervención real. Corta con su propio tope, que en modo
+            # conversación es mucho más largo. `maximo_segundos` no pinta
+            # nada aquí: es el tope de lo que se GRABA, no de lo que se
+            # espera.
+            return self._silencios >= self._bloques_sin_voz_actual
+
+        # A partir de que hay voz, `maximo_segundos` acota la grabación.
+        # Se cuenta desde que empezó a hablar y no desde que se empezó a
+        # escuchar: con la espera de 8 s del modo conversación metida en la
+        # misma cuenta, a quien se quedaba pensando siete segundos se le
+        # cortaba la pregunta a la mitad.
+        self._bloques_de_voz += 1
+        if self._bloques_de_voz >= self._bloques_maximos:
+            return True
         return self._silencios >= self._bloques_silencio_necesarios
 
     @staticmethod

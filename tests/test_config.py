@@ -1,6 +1,8 @@
 # tests/test_config.py
 from pathlib import Path
 
+import pytest
+
 from asistente import config as modulo_config
 from asistente.config import Config
 
@@ -81,3 +83,65 @@ def test_cargar_usa_wakeword_del_entorno(monkeypatch):
     cfg = Config.cargar()
     assert cfg.modelo_wakeword == "hey_mycroft"
     assert cfg.umbral_wakeword == 0.7
+
+
+# --- Un dedazo en el .env no debe tumbar el arranque ----------------------
+
+
+def test_los_decimales_con_coma_funcionan(monkeypatch):
+    """En español los decimales se escriben con coma, y quien edita su
+    propio .env los escribe así. Un float() a pelo moría con un traceback
+    que no decía ni qué variable lo causaba."""
+    monkeypatch.setenv("SEGUNDOS_PARA_CERRAR_CONVERSACION", "8,5")
+    assert Config.cargar().segundos_para_cerrar_conversacion == 8.5
+
+
+@pytest.mark.parametrize("valor", ["", "   ", "ocho", "inf", "nan", "-inf"])
+def test_un_valor_imposible_cae_al_predeterminado_sin_reventar(monkeypatch, valor):
+    """"inf" y "nan" son los peores: pasan el float() y estallan mucho más
+    tarde, ya dentro del bucle de conversación, donde el origen es
+    irrastreable."""
+    monkeypatch.setenv("SEGUNDOS_PARA_CERRAR_CONVERSACION", valor)
+    assert Config.cargar().segundos_para_cerrar_conversacion == 8.0
+
+
+def test_un_cero_no_significa_sin_limite(monkeypatch):
+    """Quien pone 0 cree que desactiva el cierre por silencio; lo que
+    conseguía era cerrar la conversación nada más contestar."""
+    monkeypatch.setenv("SEGUNDOS_PARA_CERRAR_CONVERSACION", "0")
+    assert Config.cargar().segundos_para_cerrar_conversacion == 8.0
+
+
+@pytest.mark.parametrize("valor", ["true", "TRUE", "1", "si", "sí", "yes", "on", " True "])
+def test_el_modo_conversacion_acepta_como_lo_escribe_la_gente(monkeypatch, valor):
+    monkeypatch.setenv("MODO_CONVERSACION", valor)
+    assert Config.cargar().modo_conversacion is True
+
+
+@pytest.mark.parametrize("valor", ["false", "FALSE", "0", "no", "off"])
+def test_el_modo_conversacion_se_puede_apagar(monkeypatch, valor):
+    monkeypatch.setenv("MODO_CONVERSACION", valor)
+    assert Config.cargar().modo_conversacion is False
+
+
+@pytest.mark.parametrize("valor", ["", "   ", "quizas"])
+def test_un_si_no_ilegible_deja_el_predeterminado(monkeypatch, valor):
+    """Vacío es lo que queda si alguien borra el valor dejando el '=', que
+    es como vienen las demás variables opcionales del .env.example."""
+    monkeypatch.setenv("MODO_CONVERSACION", valor)
+    assert Config.cargar().modo_conversacion is True
+
+
+def test_las_frases_de_despedida_se_leen_del_entorno(monkeypatch):
+    monkeypatch.setenv("FRASES_DE_DESPEDIDA", "chao, buenas noches")
+    assert Config.cargar().frases_de_despedida == ("chao", "buenas noches")
+
+
+def test_una_frase_de_despedida_impronunciable_se_descarta(monkeypatch):
+    """`es_despedida` no reconoce nada de más de cinco palabras. Sin este
+    filtro, el asistente anunciaba al arrancar una frase de cierre que,
+    dicha en voz alta, no cerraba nada."""
+    monkeypatch.setenv(
+        "FRASES_DE_DESPEDIDA", "chao, ya puedes dejar de escucharme por hoy"
+    )
+    assert Config.cargar().frases_de_despedida == ("chao",)

@@ -27,7 +27,14 @@ INSTRUCCIONES = (
 
 MAX_TOKENS = 400
 MAX_VUELTAS_HERRAMIENTAS = 3
-TURNOS_DE_HISTORIAL = 6  # 3 intercambios; suficiente para dar contexto
+# 20 entradas = 10 intercambios. Eran 6 (3 intercambios), que bastaban
+# cuando cada palabra clave traía una sola pregunta: el historial casi no
+# se usaba. Con el modo conversación, diez preguntas seguidas sobre el
+# mismo tema son lo normal, y con la ventana corta el asistente perdía el
+# hilo a la cuarta: "¿y de qué color es?" dejaba de saber de qué se
+# hablaba. Diez intercambios de dos o tres frases son unos mil tokens de
+# contexto, que ni se notan en coste ni en latencia.
+TURNOS_DE_HISTORIAL = 20
 
 # HttpOptions.timeout está en MILISEGUNDOS (a diferencia de httpx, que usa
 # segundos): así lo espera el SDK internamente antes de pasarlo a httpx.
@@ -35,7 +42,15 @@ TURNOS_DE_HISTORIAL = 6  # 3 intercambios; suficiente para dar contexto
 # una conexión medio abierta (router vivo, internet muerto): el asistente
 # se queda colgado en PENSANDO sin posibilidad de recuperación, porque
 # nunca se lanza nada que la red de seguridad del orquestador pueda atrapar.
-TIMEOUT_MS = 15_000
+#
+# 45 s y no 15. Los modelos actuales razonan antes de escribir, y ese
+# tiempo transcurre sin que llegue un solo byte. Medido contra la API real
+# con `gemini-3.1-flash-lite` el 2026-08-18, las respuestas tardaban entre
+# 3 y 15 segundos: con el tope en 15 el cliente cortaba por su cuenta una
+# de cada cuatro respuestas que venían de camino, y el usuario oía el aviso
+# de "no hay red" con el wifi funcionando. Con 45 s, las mismas cuatro
+# preguntas se respondieron todas.
+TIMEOUT_MS = 45_000
 
 # Traduce el campo "tipo" del esquema neutro de herramientas.py al enum de
 # tipos de Gemini. Un tipo no soportado debe fallar alto y claro al

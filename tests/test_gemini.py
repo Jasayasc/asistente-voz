@@ -236,21 +236,37 @@ def test_construccion_de_llamada_invalida_se_traduce_a_error_de_red():
 def test_historial_se_recorta_a_turnos_de_historial():
     """El comentario del código llama a esto comportamiento deliberado:
     solo se guardan los últimos TURNOS_DE_HISTORIAL elementos."""
+    # Dos intercambios más de los que caben, sea cual sea la ventana: así
+    # el test sigue valiendo si TURNOS_DE_HISTORIAL cambia de valor, que es
+    # lo que pasó al llegar el modo conversación (subió de 6 a 20 porque
+    # tres intercambios se quedaban cortos para seguir un hilo).
+    intercambios = TURNOS_DE_HISTORIAL // 2 + 2
     cliente, falso = _cliente_con_stream_falso(
-        [[_fragmento(_parte(texto=f"Respuesta {i}."))] for i in range(5)]
+        [[_fragmento(_parte(texto=f"Respuesta {i}."))] for i in range(intercambios)]
     )
-    for i in range(5):
+    for i in range(intercambios):
         list(cliente.conversar(f"Pregunta {i}"))
 
     assert len(cliente._historial) == TURNOS_DE_HISTORIAL
-    # Las últimas 3 respuestas (3 intercambios) deben seguir presentes.
+    # Deben quedar las últimas, y en orden.
     textos_modelo = [
         parte.text
         for contenido in cliente._historial
         if contenido.role == "model"
         for parte in contenido.parts
     ]
-    assert textos_modelo == ["Respuesta 2.", "Respuesta 3.", "Respuesta 4."]
+    esperados = [
+        f"Respuesta {i}."
+        for i in range(intercambios - TURNOS_DE_HISTORIAL // 2, intercambios)
+    ]
+    assert textos_modelo == esperados
+
+
+def test_el_historial_da_para_una_conversacion_larga():
+    """El modo conversación encadena preguntas sobre el mismo tema sin
+    repetir la palabra clave. Con la ventana anterior (3 intercambios) el
+    asistente perdía el hilo a la cuarta pregunta."""
+    assert TURNOS_DE_HISTORIAL // 2 >= 10
 
 
 def test_reiniciar_vacia_el_historial():

@@ -1,4 +1,5 @@
 # src/asistente/__main__.py
+import logging
 import os
 import sys
 
@@ -34,7 +35,25 @@ def _wakeword_disponible(nombre: str) -> bool:
     return any(clave in os.path.basename(c) and os.path.exists(c) for c in candidatos)
 
 
+def _configurar_logging() -> None:
+    """Deja a la vista lo que pasa dentro de una conversación.
+
+    En modo conversación el asistente encadena turnos solo, y desde fuera
+    no se distingue "se ha cerrado porque he dicho adiós" de "se ha cerrado
+    porque no me ha oído". Con el log en INFO cada turno deja su línea: qué
+    se transcribió y por qué se cerró.
+    """
+    logging.basicConfig(
+        level=os.getenv("NIVEL_LOG", "INFO").upper(),
+        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        stream=sys.stderr,
+    )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
 def main() -> int:
+    _configurar_logging()
     cfg = Config.cargar()
 
     if not cfg.gemini_api_key or not cfg.deepgram_api_key:
@@ -80,9 +99,19 @@ def main() -> int:
             tts=tts,
             reproductor=reproductor,
             cara=cara,
+            modo_conversacion=cfg.modo_conversacion,
+            segundos_para_cerrar=cfg.segundos_para_cerrar_conversacion,
+            frases_de_despedida=cfg.frases_de_despedida,
         )
 
-        print(f"listo. di '{cfg.modelo_wakeword.replace('_', ' ')}'. Ctrl+C para salir.")
+        palabra = cfg.modelo_wakeword.replace("_", " ")
+        if cfg.modo_conversacion:
+            print(
+                f"modo conversación: di '{palabra}' una vez y sigue hablando. "
+                f"Para cerrarla: '{cfg.frases_de_despedida[0]}', o "
+                f"{cfg.segundos_para_cerrar_conversacion:.0f} s de silencio."
+            )
+        print(f"listo. di '{palabra}'. Ctrl+C para salir.")
         try:
             orquestador.ejecutar()
         except KeyboardInterrupt:

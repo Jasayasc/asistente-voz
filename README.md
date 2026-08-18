@@ -66,6 +66,52 @@ python -m asistente    # el resto
 
 Di "hey jarvis" y haz una pregunta.
 
+### Modo conversación
+
+La palabra clave se dice **una vez**. A partir de ahí el asistente se queda
+escuchando turno tras turno y recuerda lo que lleváis hablado, así que las
+preguntas de seguimiento no necesitan repetir el contexto:
+
+```
+tú:      hey jarvis, ¿quién fue Ada Lovelace?
+jarvis:  Ada Lovelace fue una matemática británica considerada la primera
+         programadora de la historia...
+tú:      ¿en qué año nació?              <- sin decir "hey jarvis"
+jarvis:  Ada Lovelace nació en el año mil ochocientos quince.
+tú:      ¿y de qué trataba esa máquina?  <- "esa máquina" se resuelve sola
+jarvis:  Era la máquina analítica de Charles Babbage...
+tú:      desactívate
+jarvis:  Hasta luego.
+```
+
+La conversación se cierra de tres formas:
+
+| Cómo | Qué pasa |
+|---|---|
+| Una frase de despedida | «desactívate», «inactívate», «apágate», «adiós», «hasta luego», «duérmete», «me voy a dormir», «eso es todo», «nada más», «olvídalo», «cambio y corto»… Contesta «Hasta luego» y vuelve a reposo |
+| Silencio | 8 segundos sin oír a nadie. Se cierra sin decir nada: si ya no hay nadie, hablarle a la habitación no ayuda |
+| Un problema | Dos fallos de red seguidos, o dos veces sin entender nada. Uno suelto no cierra: los 503 pasajeros de Gemini son frecuentes |
+| Un tope duro | 15 turnos o 5 minutos. Existe porque los contadores de arriba se reinician con cada turno que sale bien: una televisión encendida produce habla real, que se transcribe, no es una despedida y no falla. Sin tope, el asistente le contestaría a la tele hasta que alguien la apagase |
+
+Cada palabra clave abre una conversación **limpia**: el asistente no
+arrastra de qué hablasteis hace tres horas. Dentro de una conversación
+recuerda los últimos diez intercambios.
+
+Se ajusta todo en el `.env` (ver `.env.example`): `MODO_CONVERSACION=false`
+lo devuelve al comportamiento anterior de una pregunta por palabra clave,
+`SEGUNDOS_PARA_CERRAR_CONVERSACION` alarga la espera si te corta mientras
+piensas, y `FRASES_DE_DESPEDIDA` acepta las tuyas separadas por comas.
+
+> Una precaución de diseño: de los dos errores posibles, el grave es
+> confundir una **pregunta** con una despedida, porque apaga el asistente
+> justo cuando le estás preguntando algo. No reconocer una despedida solo
+> cuesta ocho segundos de silencio. Por eso una frase cuenta como
+> despedida solo si tiene cinco palabras o menos, no lleva interrogación,
+> la despedida va al final y no la precede ningún verbo de petición. Así
+> «¿cómo se dice adiós en francés?», «traduce hasta luego al alemán»,
+> «¿eso es todo?» y «ayúdame a dormir» son preguntas, no órdenes de
+> apagado. Probado contra 78 frases reales.
+
 `python -m asistente` comprueba al arrancar que están las dos claves de API
 y los dos modelos (voz y wake word); si falta algo, lo dice por pantalla en
 vez de fallar con una traza a medio arrancar.
@@ -92,15 +138,17 @@ Cada uno prueba una pieza por separado. Úsalos en este orden si algo falla:
 
 Los tests no necesitan micrófono, altavoz ni conexión: todas las
 dependencias externas están detrás de interfaces y se sustituyen por
-dobles. A fecha de este hito hay 157 tests, todos en verde.
+dobles. Hay 246 tests, todos en verde.
 
 ## Estado del Hito 1
 
-El código y los 157 tests automatizados están completos. La prueba de
-integración manual con micrófono, altavoz y las dos claves de API reales
-—los ocho criterios de aceptación del Hito 1— queda pendiente de
-verificación con el dueño del proyecto: no se ha ejecutado
-`python -m asistente` en este hito.
+El código y los 246 tests automatizados están completos, y la conversación
+se ha verificado contra las dos APIs reales: preguntas generales, preguntas
+encadenadas con memoria, y las dos herramientas (hora y clima).
+
+Queda por comprobar con el aparato delante la calidad de la detección de la
+palabra clave con el micrófono definitivo, y el comportamiento de la cara
+durante una conversación larga.
 
 ## Cambiar de proveedor
 

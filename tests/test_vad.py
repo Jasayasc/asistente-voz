@@ -71,9 +71,13 @@ def test_intervencion_larga_con_voz_sigue_usando_el_tope_largo():
     el tope corto de "nadie ha dicho nada todavía": sigue rigiéndose por
     `maximo_segundos`, no por `segundos_sin_voz`."""
     vad = DetectorSilencio(segundos_sin_voz=0.5, maximo_segundos=2.0)
-    for _ in range(24):  # 1.92 s: más que segundos_sin_voz, menos que maximo_segundos
+    # `maximo_segundos` cuenta desde que hay voz, y la voz se da por
+    # empezada al segundo bloque seguido con energia: el primero solo
+    # arranca la cuenta. Por eso el tope llega un bloque mas tarde que los
+    # 2.0 s de escucha.
+    for _ in range(_en_bloques(2.0)):
         assert vad.procesar(bloque_voz()) is False
-    assert vad.procesar(bloque_voz()) is True  # bloque 25: alcanza los 2.0 s
+    assert vad.procesar(bloque_voz()) is True
 
 
 def test_termina_tras_hablar_y_callar():
@@ -186,7 +190,10 @@ def test_umbral_ligeramente_por_encima():
 
     Amplitud 656 da RMS ≈ 0.02002 (justo encima del 0.02 predeterminado).
     """
-    vad = DetectorSilencio(umbral=0.02)
+    # bloques_para_voz=1 aisla lo que prueba este test —la comparacion
+    # de energia contra el umbral— del numero de bloques seguidos que
+    # exige el valor por defecto.
+    vad = DetectorSilencio(umbral=0.02, bloques_para_voz=1)
     bloque_alto = bloque_amplitud(656)
     vad.procesar(bloque_alto)
     # Debe haber detectado voz
@@ -196,7 +203,7 @@ def test_umbral_ligeramente_por_encima():
 def test_umbral_claramente_por_encima():
     """Energía claramente encima del umbral cuenta como voz."""
     # Amplitud 657 da RMS ≈ 0.02005 (más claramente encima)
-    vad = DetectorSilencio(umbral=0.02)
+    vad = DetectorSilencio(umbral=0.02, bloques_para_voz=1)
     bloque_alto = bloque_amplitud(657)
     vad.procesar(bloque_alto)
     # Debe haber detectado voz
@@ -216,10 +223,81 @@ def test_comparacion_inclusiva_en_frontera_exacta():
     amplitud = 512
     umbral_exacto = amplitud / 32768.0
 
-    vad = DetectorSilencio(umbral=umbral_exacto)
+    # bloques_para_voz=1 aísla la comparación de energía, que es lo que
+    # prueba este test, del número de bloques seguidos que exige el valor
+    # por defecto.
+    vad = DetectorSilencio(umbral=umbral_exacto, bloques_para_voz=1)
     bloque_frontera = bloque_amplitud(amplitud)
 
     # La energía será exactamente igual al umbral
     # Con >= cuenta como voz; con > no contaría
     vad.procesar(bloque_frontera)
     assert vad.hubo_voz is True
+
+
+# --- Espera configurable por intervención (modo conversación) -------------
+
+
+def _en_bloques(segundos):
+    """Misma conversión que usa DetectorSilencio.
+
+    `int(x + 0.5)` y `round(x)` NO son lo mismo: round() aplica redondeo
+    bancario, y con 1,0 s (12,5 bloques exactos) devuelve 12 en vez de 13.
+    Calcular aquí lo esperado con otra fórmula que la del código haría
+    fallar el test por un bloque sin que hubiera nada roto.
+    """
+    return max(1, int(segundos / SEGUNDOS_POR_BLOQUE + 0.5))
+
+
+def _bloques_hasta_cortar(vad, hacer_bloque):
+    """Cuántos bloques hacen falta hasta que el VAD dice "se acabó"."""
+    n = 0
+    while True:
+        n += 1
+        if vad.procesar(hacer_bloque()):
+            return n
+
+
+def test_reiniciar_sin_argumentos_mantiene_la_espera_de_siempre():
+    """Control negativo: quien llame como antes debe ver lo de antes."""
+    vad = DetectorSilencio(segundos_sin_voz=1.0, maximo_segundos=30.0)
+    vad.reiniciar()
+    esperados = _en_bloques(1.0)
+    assert _bloques_hasta_cortar(vad, bloque_silencio) == esperados
+
+
+def test_reiniciar_puede_alargar_la_espera_de_esta_intervencion():
+    """El modo conversación necesita esperar mucho más entre turnos que
+    tras la palabra clave: allí el silencio es un falso positivo, aquí es
+    alguien pensando qué preguntar."""
+    vad = DetectorSilencio(segundos_sin_voz=1.0, maximo_segundos=30.0)
+    vad.reiniciar(segundos_sin_voz=4.0)
+    esperados = _en_bloques(4.0)
+    assert _bloques_hasta_cortar(vad, bloque_silencio) == esperados
+
+
+def test_la_espera_alargada_dura_solo_esa_intervencion():
+    """No se queda pegada: el turno siguiente vuelve al valor de fábrica si
+    nadie pide otra cosa."""
+    vad = DetectorSilencio(segundos_sin_voz=1.0, maximo_segundos=30.0)
+    vad.reiniciar(segundos_sin_voz=4.0)
+    vad.reiniciar()
+    esperados = _en_bloques(1.0)
+    assert _bloques_hasta_cortar(vad, bloque_silencio) == esperados
+
+
+def test_la_espera_alargada_no_afecta_al_corte_tras_hablar():
+    """Solo alarga la paciencia con el silencio INICIAL. Una vez que el
+    usuario ha hablado, sigue cortando con `segundos_silencio`, o el
+    asistente tardaría cuatro segundos en contestar a todo."""
+    vad = DetectorSilencio(
+        segundos_silencio=1.0, segundos_sin_voz=1.0, maximo_segundos=30.0
+    )
+    vad.reiniciar(segundos_sin_voz=8.0)
+    # Dos bloques: la voz se da por empezada al segundo seguido con
+    # energía, no al primero.
+    assert not vad.procesar(bloque_voz())
+    assert not vad.procesar(bloque_voz())
+    assert vad.hubo_voz
+    esperados = _en_bloques(1.0)
+    assert _bloques_hasta_cortar(vad, bloque_silencio) == esperados
