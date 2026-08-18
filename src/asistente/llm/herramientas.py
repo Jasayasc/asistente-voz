@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 import httpx
 
 URL_OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
@@ -19,6 +22,72 @@ ESQUEMA_CLIMA = {
         "longitud": {"tipo": "number", "descripcion": "Longitud en grados decimales"},
     },
 }
+
+# El modelo no tiene reloj: sin esta herramienta se inventa la hora con toda
+# naturalidad, que es peor que no contestar. La zona horaria la deduce él de
+# la ciudad que diga el usuario, igual que las coordenadas del clima.
+ESQUEMA_HORA = {
+    "nombre": "consultar_hora",
+    "descripcion": (
+        "Consulta la fecha y la hora actuales en una zona horaria. Úsala "
+        "siempre que el usuario pregunte qué hora es, qué día es, o cuánto "
+        "falta para algo. Deduce tú la zona horaria de la ciudad o el país "
+        "que mencione el usuario."
+    ),
+    "parametros": {
+        "zona_horaria": {
+            "tipo": "string",
+            "descripcion": (
+                "Zona horaria en formato IANA, por ejemplo 'America/Bogota', "
+                "'Europe/Madrid' o 'America/Mexico_City'."
+            ),
+        },
+    },
+}
+
+DIAS = [
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "domingo",
+]
+
+MESES = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
+
+
+def consultar_hora(zona_horaria: str) -> str:
+    """Devuelve la fecha y la hora en texto llano. Nunca lanza.
+
+    Los nombres de día y mes se escriben aquí a mano en vez de usar
+    `strftime`: el locale del sistema no está bajo nuestro control y en un
+    equipo en inglés saldría "Monday", que el TTS pronunciaría en castellano.
+    """
+    try:
+        zona = ZoneInfo(zona_horaria)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        return f"No conozco la zona horaria '{zona_horaria}'."
+    ahora = datetime.now(zona)
+    return (
+        f"Son las {ahora.hour} horas y {ahora.minute} minutos "
+        f"del {DIAS[ahora.weekday()]} {ahora.day} "
+        f"de {MESES[ahora.month - 1]} de {ahora.year}."
+    )
 
 # Códigos WMO de Open-Meteo, agrupados en lo que un asistente diría en voz alta.
 DESCRIPCIONES = {
@@ -93,20 +162,25 @@ def consultar_clima(
             cliente.close()
 
 
-HERRAMIENTAS = [ESQUEMA_CLIMA]
+HERRAMIENTAS = [ESQUEMA_CLIMA, ESQUEMA_HORA]
 
 
 def ejecutar(
     nombre: str, argumentos: dict, cliente_http: httpx.Client | None = None
 ) -> str:
     """Despacha una llamada de herramienta. Nunca lanza."""
-    if nombre != "consultar_clima":
-        return f"La herramienta '{nombre}' no existe."
-    try:
-        return consultar_clima(
-            float(argumentos["latitud"]),
-            float(argumentos["longitud"]),
-            cliente_http=cliente_http,
-        )
-    except (KeyError, TypeError, ValueError, AttributeError):
-        return "No se ha podido procesar la solicitud de clima."
+    if nombre == "consultar_clima":
+        try:
+            return consultar_clima(
+                float(argumentos["latitud"]),
+                float(argumentos["longitud"]),
+                cliente_http=cliente_http,
+            )
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return "No se ha podido procesar la solicitud de clima."
+    if nombre == "consultar_hora":
+        try:
+            return consultar_hora(str(argumentos["zona_horaria"]))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return "No se ha podido procesar la solicitud de hora."
+    return f"La herramienta '{nombre}' no existe."

@@ -7,7 +7,7 @@ from google.genai import errors as genai_errors
 from google.genai import types
 
 from asistente.llm.base import ClienteLLM, ErrorDeRed, acumular_frases
-from asistente.llm.herramientas import ESQUEMA_CLIMA, ejecutar
+from asistente.llm.herramientas import HERRAMIENTAS, ejecutar
 
 INSTRUCCIONES = (
     "Eres un asistente de voz doméstico. Tus respuestas se convierten en voz "
@@ -17,6 +17,11 @@ INSTRUCCIONES = (
     "emojis, sin paréntesis.\n"
     "- Escribe los números y las unidades como se pronuncian.\n"
     "- Si no sabes algo, dilo en una frase y no te disculpes de más.\n"
+    "- Tienes herramientas para la hora y el clima, y conexión a internet "
+    "para usarlas. No inventes nunca una hora, una fecha ni un dato del "
+    "tiempo, y no digas que no tienes acceso a esa información: consúltala.\n"
+    "- Si el usuario no dice de qué sitio pregunta, usa el sitio del que "
+    "hablabais antes, y si no hay ninguno, pregúntaselo.\n"
     "- Responde siempre en español."
 )
 
@@ -50,32 +55,35 @@ def _tipo_gemini(tipo: str) -> types.Type:
         raise ValueError(f"Tipo de parámetro no soportado: '{tipo}'") from None
 
 
-def _construir_herramientas() -> types.Tool:
-    """Traduce el esquema neutro de `herramientas.py` al formato de Gemini.
-
-    Esta traducción vive aquí, en el cliente del proveedor, y no en el
-    módulo de herramientas: así cambiar de proveedor no obliga a tocar la
-    definición de las herramientas.
-    """
+def _declaracion(esquema: dict) -> types.FunctionDeclaration:
+    """Traduce un esquema neutro de herramienta al formato de Gemini."""
     propiedades = {
         nombre: types.Schema(
             type=_tipo_gemini(definicion["tipo"]),
             description=definicion["descripcion"],
         )
-        for nombre, definicion in ESQUEMA_CLIMA["parametros"].items()
+        for nombre, definicion in esquema["parametros"].items()
     }
+    return types.FunctionDeclaration(
+        name=esquema["nombre"],
+        description=esquema["descripcion"],
+        parameters=types.Schema(
+            type=types.Type.OBJECT,
+            properties=propiedades,
+            required=list(esquema["parametros"]),
+        ),
+    )
+
+
+def _construir_herramientas() -> types.Tool:
+    """Traduce los esquemas neutros de `herramientas.py` al formato de Gemini.
+
+    Esta traducción vive aquí, en el cliente del proveedor, y no en el
+    módulo de herramientas: así cambiar de proveedor no obliga a tocar la
+    definición de las herramientas.
+    """
     return types.Tool(
-        function_declarations=[
-            types.FunctionDeclaration(
-                name=ESQUEMA_CLIMA["nombre"],
-                description=ESQUEMA_CLIMA["descripcion"],
-                parameters=types.Schema(
-                    type=types.Type.OBJECT,
-                    properties=propiedades,
-                    required=list(ESQUEMA_CLIMA["parametros"]),
-                ),
-            )
-        ]
+        function_declarations=[_declaracion(e) for e in HERRAMIENTAS]
     )
 
 
@@ -125,7 +133,16 @@ class ClienteGemini(ClienteLLM):
             # llamada de red (p. ej. una function_call sin forma válida), y
             # ninguna de las dos debe escapar sin traducir.
             try:
-                llamadas: list[types.FunctionCall] = []
+                # Se guardan las Part enteras, no solo la FunctionCall que
+                # llevan dentro: los modelos con razonamiento adjuntan a esa
+                # parte un `thought_signature`, y la API exige que vuelva
+                # tal cual al devolver el resultado de la herramienta. Si se
+                # reconstruye la parte a mano (types.Part(function_call=...))
+                # la firma se pierde y la siguiente vuelta muere con un 400
+                # INVALID_ARGUMENT, que aquí se traduce en ErrorDeRed y el
+                # asistente acaba diciendo que no tiene internet cuando la
+                # red está perfectamente.
+                partes_llamada: list[types.Part] = []
                 for fragmento in self._cliente.models.generate_content_stream(
                     model=self._modelo, contents=contenidos, config=self._config
                 ):
@@ -134,29 +151,27 @@ class ClienteGemini(ClienteLLM):
                             texto_final += parte.text
                             yield parte.text
                         if parte.function_call is not None:
-                            llamadas.append(parte.function_call)
+                            partes_llamada.append(parte)
 
-                if not llamadas:
+                if not partes_llamada:
                     self._recordar(turno_usuario, texto_final)
                     return
 
                 contenidos = contenidos + [
-                    types.Content(
-                        role="model",
-                        parts=[types.Part(function_call=ll) for ll in llamadas],
-                    ),
+                    types.Content(role="model", parts=partes_llamada),
                     types.Content(
                         role="user",
                         parts=[
                             types.Part.from_function_response(
-                                name=ll.name,
+                                name=parte.function_call.name,
                                 response={
                                     "resultado": ejecutar(
-                                        ll.name, dict(ll.args or {})
+                                        parte.function_call.name,
+                                        dict(parte.function_call.args or {}),
                                     )
                                 },
                             )
-                            for ll in llamadas
+                            for parte in partes_llamada
                         ],
                     ),
                 ]

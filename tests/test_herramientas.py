@@ -1,6 +1,13 @@
 import httpx
 
-from asistente.llm.herramientas import ESQUEMA_CLIMA, consultar_clima, ejecutar
+from asistente.llm.herramientas import (
+    ESQUEMA_CLIMA,
+    ESQUEMA_HORA,
+    HERRAMIENTAS,
+    consultar_clima,
+    consultar_hora,
+    ejecutar,
+)
 
 RESPUESTA_OK = {
     "current": {
@@ -136,3 +143,54 @@ def test_respuesta_200_json_no_diccionario_no_lanza():
     texto = consultar_clima(40.4, -3.7, cliente_http=cliente)
     assert isinstance(texto, str)
     assert "no" in texto.lower()
+
+
+def test_el_esquema_de_hora_tiene_los_campos_obligatorios():
+    assert ESQUEMA_HORA["nombre"] == "consultar_hora"
+    assert ESQUEMA_HORA["descripcion"]
+    props = ESQUEMA_HORA["parametros"]
+    assert set(props) == {"zona_horaria"}
+    assert props["zona_horaria"]["tipo"] == "string"
+    assert props["zona_horaria"]["descripcion"]
+
+
+def test_las_dos_herramientas_estan_registradas():
+    assert [e["nombre"] for e in HERRAMIENTAS] == ["consultar_clima", "consultar_hora"]
+
+
+def test_la_hora_coincide_con_la_zona_pedida():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    esperado = datetime.now(ZoneInfo("America/Bogota"))
+    texto = consultar_hora("America/Bogota")
+    assert f"las {esperado.hour} horas" in texto
+    assert str(esperado.year) in texto
+
+
+def test_la_hora_se_dice_en_castellano_sea_cual_sea_el_locale():
+    texto = consultar_hora("Europe/Madrid")
+    assert any(dia in texto for dia in ("lunes", "martes", "miércoles",
+                                        "jueves", "viernes", "sábado", "domingo"))
+
+
+def test_zona_horaria_desconocida_no_lanza():
+    texto = consultar_hora("Marte/Olympus")
+    assert isinstance(texto, str)
+    assert "Marte/Olympus" in texto
+
+
+def test_zona_horaria_con_ruta_absoluta_no_lanza():
+    """ZoneInfo lanza ValueError, no ZoneInfoNotFoundError, con rutas así."""
+    texto = consultar_hora("/etc/passwd")
+    assert isinstance(texto, str)
+
+
+def test_ejecutar_despacha_a_la_hora():
+    texto = ejecutar("consultar_hora", {"zona_horaria": "America/Bogota"})
+    assert "horas" in texto
+
+
+def test_ejecutar_hora_sin_argumentos_no_lanza():
+    texto = ejecutar("consultar_hora", {})
+    assert isinstance(texto, str)

@@ -22,12 +22,22 @@ from asistente.llm.gemini import (
     _construir_herramientas,
     _tipo_gemini,
 )
+from asistente.llm.herramientas import HERRAMIENTAS
 
 
-def _parte(texto=None, llamada=None):
-    """Construye una parte de fragmento falsa, del mismo modo en que
-    `_partes` de ClienteGemini la consulta: por atributos, no por tipo."""
-    return SimpleNamespace(text=texto, function_call=llamada)
+def _parte(texto=None, llamada=None, firma=None):
+    """Construye una parte de fragmento.
+
+    Las partes con llamada a función son `types.Part` de verdad, no un
+    SimpleNamespace: el cliente las reenvía tal cual a la API en el turno
+    siguiente, y ahí el SDK valida el tipo. Un doble demasiado laxo dejaría
+    pasar precisamente el fallo del `thought_signature`.
+    """
+    if llamada is None:
+        return SimpleNamespace(text=texto, function_call=None)
+    return types.Part(
+        text=texto, function_call=llamada, thought_signature=firma or b"firma-falsa"
+    )
 
 
 def _fragmento(*partes):
@@ -158,6 +168,29 @@ def test_bucle_de_herramientas_ejecuta_y_continua(monkeypatch):
     assert len(falso.llamadas) == 2
 
 
+def test_la_firma_de_pensamiento_vuelve_a_la_api(monkeypatch):
+    """Los modelos con razonamiento adjuntan un `thought_signature` a la
+    parte de la llamada, y la API lo exige de vuelta al mandar el resultado.
+    Reconstruir la parte a mano lo perdía y la segunda vuelta moría con un
+    400, que el asistente acababa contando como falta de internet."""
+    monkeypatch.setattr(
+        "asistente.llm.gemini.ejecutar", lambda nombre, argumentos: "resultado"
+    )
+    llamada = types.FunctionCall(
+        name="consultar_hora", args={"zona_horaria": "America/Bogota"}
+    )
+    turno_1 = [_fragmento(_parte(llamada=llamada, firma=b"firma-del-modelo"))]
+    turno_2 = [_fragmento(_parte(texto="Son las tres."))]
+
+    cliente, falso = _cliente_con_stream_falso([turno_1, turno_2])
+    list(cliente.conversar("¿qué hora es en Bogotá?"))
+
+    contenidos = falso.llamadas[1]["contents"]
+    partes_modelo = [p for c in contenidos if c.role == "model" for p in c.parts]
+    firmas = [p.thought_signature for p in partes_modelo if p.function_call]
+    assert firmas == [b"firma-del-modelo"]
+
+
 def test_bucle_de_herramientas_no_supera_el_maximo_de_vueltas(monkeypatch):
     """Si el modelo insiste en llamar a la función sin parar, el bucle debe
     cortar en MAX_VUELTAS_HERRAMIENTAS y no colgarse."""
@@ -182,8 +215,16 @@ def test_construccion_de_llamada_invalida_se_traduce_a_error_de_red():
     """Corrección 2: la construcción de Content/Part tras el streaming debe
     quedar dentro de la misma guarda. Una function_call mal formada (aquí,
     una cadena en vez de un FunctionCall real) hace que la validación de
-    pydantic del SDK falle con ValidationError, que hereda de ValueError."""
-    turno = [_fragmento(_parte(llamada="no-es-una-function-call-valida"))]
+    pydantic del SDK falle con ValidationError, que hereda de ValueError.
+
+    La parte se construye aquí a mano en vez de con `_parte`, porque lo que
+    se quiere es una parte inválida que salga del stream: si la validara ya
+    el ayudante, el fallo ocurriría en la preparación del test y no dentro
+    del cliente, que es donde debe atraparse."""
+    parte_mala = SimpleNamespace(
+        text=None, function_call="no-es-una-function-call-valida"
+    )
+    turno = [_fragmento(parte_mala)]
     cliente, _ = _cliente_con_stream_falso([turno])
     with pytest.raises(ErrorDeRed):
         list(cliente.conversar("pregunta"))
@@ -255,8 +296,16 @@ def test_construir_herramientas_respeta_un_parametro_de_texto(monkeypatch):
             "ciudad": {"tipo": "string", "descripcion": "Nombre de la ciudad"},
         },
     }
-    monkeypatch.setattr("asistente.llm.gemini.ESQUEMA_CLIMA", esquema_con_texto)
+    monkeypatch.setattr("asistente.llm.gemini.HERRAMIENTAS", [esquema_con_texto])
 
     herramienta = _construir_herramientas()
     parametros = herramienta.function_declarations[0].parameters.properties
     assert parametros["ciudad"].type == types.Type.STRING
+
+
+def test_construir_herramientas_declara_todas_las_del_modulo():
+    """Una herramienta nueva en `herramientas.py` debe llegar a Gemini sin
+    tocar este cliente: antes solo se declaraba la del clima, y la de la
+    hora habría quedado invisible para el modelo."""
+    nombres = [d.name for d in _construir_herramientas().function_declarations]
+    assert nombres == [e["nombre"] for e in HERRAMIENTAS]
