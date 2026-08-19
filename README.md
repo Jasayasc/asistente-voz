@@ -130,6 +130,49 @@ Cada uno prueba una pieza por separado. Úsalos en este orden si algo falla:
 | `scripts/probar_llm.py` | Que el LLM responde y consulta el clima |
 | `scripts/probar_cara.py` | Que la cara anima todos los estados |
 
+## Tocar la cara
+
+La cara reacciona a que la toquen. En la Raspberry Pi con la pantalla
+táctil se hace con el dedo; en el ordenador de desarrollo, arrastrando con
+el ratón. Funciona con `python -m cara` a secas, sin el asistente
+arrancado.
+
+| Gesto | Qué hace |
+|---|---|
+| Apoyar el dedo | Te sigue con la mirada mientras lo tengas puesto |
+| Acariciar (recorrer la cara sin levantar) | Le da cosquillas: entrecierra los ojos, sonríe y se ríe a carcajadas mientras sigas |
+| Un toque seco | Se sobresalta, abre los ojos y mira hacia donde le has tocado |
+| Dos toques seguidos o más | Se molesta: mirada de reojo hacia ti, ojos entornados y boca hacia abajo, con un respingo. Cuanto más insistas, peor cara |
+
+La reacción se pinta **encima** de la expresión del estado, no en lugar de
+ella: se puede estar pensando y tener cosquillas a la vez. Mientras el
+asistente habla, la boca la sigue gobernando el lipsync, para no
+desincronizar la voz de la cara.
+
+Lo que separa una caricia de un golpe son dos medidas distintas: la
+caricia recorre distancia (da igual cuánto dure) y el golpe es corto en
+tiempo y no recorre nada. Los umbrales están en `src/cara/tacto.py`, en
+fracciones del lado de la pantalla para que los gestos se sientan iguales
+en la pantalla de cinco pulgadas y en el monitor.
+
+### En la Raspberry Pi
+
+Dos cosas que solo aparecen allí y ya están resueltas en el código:
+
+- SDL entrega cada gesto **dos veces**: como evento de dedo y, además,
+  como un evento de ratón sintético para las aplicaciones que solo saben
+  de ratón. Sin filtrarlo, cada caricia recorrería el doble y cada golpe
+  valdría por dos. Se descartan los de ratón marcados con `touch=True`.
+- La pantalla es **multitáctil**. Apoyar un segundo dedo haría saltar el
+  punto de uno a otro, y ese salto contaría como recorrido: bastaría con
+  posar dos dedos separados para disparar unas cosquillas que nadie ha
+  hecho. Manda el primer dedo hasta que se levanta.
+
+Si al tocar la cara reacciona en el sitio equivocado (por ejemplo, en
+espejo), no es cosa del código: es la matriz de calibración del panel
+táctil, que se configura en el sistema con `libinput`. Muchos paneles DSI
+vienen girados respecto a la imagen.
+
 ## Tests
 
 ```bash
@@ -138,11 +181,11 @@ Cada uno prueba una pieza por separado. Úsalos en este orden si algo falla:
 
 Los tests no necesitan micrófono, altavoz ni conexión: todas las
 dependencias externas están detrás de interfaces y se sustituyen por
-dobles. Hay 246 tests, todos en verde.
+dobles. Hay 358 tests, todos en verde.
 
 ## Estado del Hito 1
 
-El código y los 246 tests automatizados están completos, y la conversación
+El código y los 358 tests automatizados están completos, y la conversación
 se ha verificado contra las dos APIs reales: preguntas generales, preguntas
 encadenadas con memoria, y las dos herramientas (hora y clima).
 

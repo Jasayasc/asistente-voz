@@ -1,5 +1,10 @@
 from dataclasses import dataclass, fields, replace
 
+# Framerate para el que están calibrados los factores de suavizado del
+# proyecto. No es el framerate real: es la referencia contra la que
+# `factor_por_dt` corrige.
+FPS_REFERENCIA = 60.0
+
 
 @dataclass
 class Parametros:
@@ -28,15 +33,9 @@ def interpolar(actual: Parametros, objetivo: Parametros, factor: float) -> Param
     Aplicado cada frame produce transiciones suaves sin escribir animaciones
     a mano: con factor 0.15 a 60 fps, una transición completa dura ~200 ms.
 
-    RIESGO CONOCIDO (diferido al Hito 2, ver revisión final del Hito 1):
-    `factor` es por frame, no por segundo — no recibe `dt`. A 60 fps (el
-    caso de desarrollo en Windows) eso da los ~200 ms de arriba; a 20 fps
-    (lo esperable en una Raspberry Pi 3B) la misma transición dura ~600 ms,
-    porque hay menos frames en los que acercarse al objetivo. Antes de
-    portar a la Pi, escalar por `dt` (p. ej. `factor = 1 - exp(-k * dt)`, o
-    como mínimo `min(1.0, factor_base * dt * 60)` para evitar que un frame
-    largo aislado produzca un factor > 1 y la interpolación sobrepase el
-    objetivo y oscile) y volver a medir con el framerate real de la Pi.
+    `factor` es por frame, no por segundo. Quien llame desde un bucle de
+    render debe pasarlo por `factor_por_dt` para que la animación dure lo
+    mismo a cualquier framerate; ver el porqué allí.
     """
     valores = {}
     for campo in fields(actual):
@@ -44,3 +43,33 @@ def interpolar(actual: Parametros, objetivo: Parametros, factor: float) -> Param
         b = getattr(objetivo, campo.name)
         valores[campo.name] = a + (b - a) * factor
     return Parametros(**valores)
+
+
+def factor_por_dt(
+    factor_base: float, dt: float, fps_referencia: float = FPS_REFERENCIA
+) -> float:
+    """Corrige un factor por frame para que la animación dure lo mismo
+    a cualquier framerate.
+
+    Este era un riesgo conocido y anotado del Hito 1, aplazado hasta tener
+    la Raspberry Pi delante. `interpolar` acerca la cara al objetivo un
+    porcentaje FIJO en cada frame, así que la velocidad real depende de
+    cuántos frames haya por segundo: los ~200 ms medidos en el portátil a
+    60 fps se convierten en ~600 ms a los 20 fps de la Pi. Con la cara
+    reaccionando al tacto eso ya no es un detalle estético — una caricia
+    que tarda más de medio segundo en verse no se siente como respuesta al
+    gesto, sino como un fallo.
+
+    La corrección es exacta, no aproximada: aplicar `factor_base` n veces
+    deja sin recorrer `(1 - factor_base) ** n` del camino, así que basta
+    con resolver para el número de frames de referencia que caben en `dt`.
+    De paso queda acotada por debajo de 1.0 por construcción, y un frame
+    muy largo aislado —el primero tras arrancar, o un tirón del sistema— no
+    puede producir un factor mayor que 1 que haga sobrepasar el objetivo y
+    oscilar.
+    """
+    if dt <= 0.0 or factor_base <= 0.0:
+        return 0.0
+    if factor_base >= 1.0:
+        return 1.0
+    return 1.0 - (1.0 - factor_base) ** (dt * fps_referencia)

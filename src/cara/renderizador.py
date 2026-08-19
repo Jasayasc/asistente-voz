@@ -34,18 +34,34 @@ class Renderizador:
         self.lado = min(ancho, alto)
         self.origen_x = (ancho - self.lado) // 2
         self.origen_y = (alto - self.lado) // 2
+        # Desplazamiento temporal de la cara entera, en fraccion del lado.
+        # Lo usa el respingo al recibir un golpe. Se fija al principio de
+        # cada `dibujar` y no sobrevive al frame.
+        self._desplazamiento = 0
 
     def _punto(self, x: float, y: float) -> tuple[int, int]:
         """Convierte coordenadas normalizadas (0..1) a píxeles de pantalla."""
         return (
-            self.origen_x + int(x * self.lado),
+            self.origen_x + self._desplazamiento + int(x * self.lado),
             self.origen_y + int(y * self.lado),
         )
 
     def _escala(self, valor: float) -> int:
         return max(1, int(valor * self.lado))
 
-    def dibujar(self, superficie: pygame.Surface, p: Parametros) -> None:
+    def dibujar(
+        self,
+        superficie: pygame.Surface,
+        p: Parametros,
+        desplazamiento_x: float = 0.0,
+    ) -> None:
+        """Pinta la cara. `desplazamiento_x` la corre en horizontal.
+
+        Se expresa como fraccion del lado, igual que el resto de medidas de
+        este modulo, para que el respingo se vea igual en la pantalla de la
+        Raspberry Pi que en el monitor de desarrollo.
+        """
+        self._desplazamiento = int(desplazamiento_x * self.lado)
         superficie.fill(FONDO)
         self._dibujar_ojo(superficie, 0.5 - SEPARACION_OJOS, p.ojo_izq, p)
         self._dibujar_ojo(superficie, 0.5 + SEPARACION_OJOS, p.ojo_der, p)

@@ -16,7 +16,9 @@
       "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\zumbido.py\")",
       "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_palabras.py)",
       "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\Joel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Proyectos-asistente-voz\\\\fceff541-1bff-4f8e-a262-d429f6c33796\\\\scratchpad\\\\control.py\")",
-      "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_microfonos.py)"
+      "Bash(.venv/Scripts/python.exe -m py_compile scripts/probar_microfonos.py)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_config.py -q)",
+      "Bash(git add *)"
     ]
   }
 }
